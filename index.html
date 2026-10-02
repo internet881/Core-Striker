@@ -3534,11 +3534,24 @@
   <script>
     /* ==========================================================================
        ITCH.IO & PUBLIC DEPLOYMENT CONFIGURATION:
-       - Leave as null for local testing (connects to localhost:3000 / same host).
-       - When uploading index.html to itch.io, paste your public WebSocket URL here
-         (e.g., "wss://your-service.onrender.com" or "wss://your-tunnel.trycloudflare.com").
+       - Configured to connect to your Render cloud backend when hosted on Itch.io.
+       - Automatically falls back to localhost:3000 during local development.
        ========================================================================== */
-    window.CORE_STRIKER_SERVER_URL = null;
+    window.CORE_STRIKER_SERVER_URL = (typeof window !== "undefined" && (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"))
+      ? null
+      : "https://core-striker.onrender.com";
+
+    function getApiBaseUrl() {
+      const current = window.CORE_STRIKER_SERVER_URL || localStorage.getItem("core_striker_server_url") || "";
+      if (!current) return "";
+      let base = current.trim();
+      if (base.startsWith("wss://")) base = "https://" + base.substring(6);
+      else if (base.startsWith("ws://")) base = "http://" + base.substring(5);
+      else if (!base.startsWith("http://") && !base.startsWith("https://")) base = "https://" + base;
+      if (base.endsWith("/")) base = base.slice(0, -1);
+      if (base.includes("localhost:") || base.includes("127.0.0.1:")) return "";
+      return base;
+    }
 
     /* ==========================================================================
        PROJECT 0.00 // CORE STRIKER (PEG ARENA & MAP SYSTEM)
@@ -3987,8 +4000,13 @@
         // Allow explicit server endpoint override (e.g. ?server=wss://relay.example.com, window.CORE_STRIKER_SERVER_URL, or localStorage)
         try {
           const params = new URLSearchParams(window.location.search);
-          const override = params.get("server") || window.CORE_STRIKER_SERVER_URL || localStorage.getItem("core_striker_server_url");
+          let override = params.get("server") || window.CORE_STRIKER_SERVER_URL || localStorage.getItem("core_striker_server_url");
           if (override) {
+            override = override.trim();
+            if (override.startsWith("https://")) override = "wss://" + override.substring(8);
+            else if (override.startsWith("http://")) override = "ws://" + override.substring(7);
+            else if (!override.startsWith("wss://") && !override.startsWith("ws://")) override = "wss://" + override;
+            if (override.endsWith("/")) override = override.slice(0, -1);
             url = override;
           }
         } catch (e) {}
@@ -10917,7 +10935,7 @@
       },
 
       validateSession() {
-        fetch("/api/auth/me", {
+        fetch(getApiBaseUrl() + "/api/auth/me", {
           method: "GET",
           headers: { "Authorization": `Bearer ${this.token}` }
         })
@@ -11017,7 +11035,7 @@
           return;
         }
 
-        const endpoint = this.mode === "register" ? "/api/auth/register" : "/api/auth/login";
+        const endpoint = getApiBaseUrl() + (this.mode === "register" ? "/api/auth/register" : "/api/auth/login");
         if (btnSubmitAuth) {
           btnSubmitAuth.disabled = true;
           btnSubmitAuth.style.opacity = "0.6";
@@ -11062,7 +11080,7 @@
 
       logout(notify = true) {
         if (this.token) {
-          fetch("/api/auth/logout", {
+          fetch(getApiBaseUrl() + "/api/auth/logout", {
             method: "POST",
             headers: { "Authorization": `Bearer ${this.token}` }
           }).catch(() => {});
@@ -11188,7 +11206,7 @@
           btnRef.textContent = "↻ LOADING...";
           btnRef.style.opacity = "0.7";
         }
-        fetch("/api/leaderboard")
+        fetch(getApiBaseUrl() + "/api/leaderboard")
           .then(res => res.json())
           .then(data => {
             if (btnRef) {
@@ -11345,7 +11363,7 @@
           pucksFired
         };
 
-        fetch("/api/leaderboard/record", {
+        fetch(getApiBaseUrl() + "/api/leaderboard/record", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -11474,7 +11492,7 @@
       }
 
       try {
-        const res = await fetch("/api/feedback", {
+        const res = await fetch(getApiBaseUrl() + "/api/feedback", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
