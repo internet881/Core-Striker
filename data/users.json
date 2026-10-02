@@ -1,0 +1,44 @@
+[
+  {
+    "id": "usr_1790965162999_7n6s9",
+    "username": "ACE_STRIKER",
+    "salt": "301f73de8748ea0006ed02448145c904",
+    "passwordHash": "01ff0fccf5de9bc4e7f20e78b4f9e3d3f74c57b4a683dccb16b2720096eb6ee323702e30d8092532c3962090d598d9abf86b835572c39f1bc644f67ed986ab5f",
+    "createdAt": "2026-10-02T18:19:22.999Z",
+    "stats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "bestProximityMm": null,
+      "elo": 1200,
+      "pucksFired": 0
+    }
+  },
+  {
+    "id": "usr_1790966824652_n7fnu",
+    "username": "TEST_VAL_6713",
+    "salt": "4df38ba39ad21f756f9392c7f163a2db",
+    "passwordHash": "a23d308864bf6e2d60732453b0539f9fd352bf701fd59b7350967296509db774d1c4598a176ce36e8ef5982b7a6ba198a498dec2e5b418562e6695388769aaf8",
+    "createdAt": "2026-10-02T18:47:04.652Z",
+    "stats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "bestProximityMm": null,
+      "elo": 1200,
+      "pucksFired": 0
+    }
+  },
+  {
+    "id": "usr_1790966826923_hwcyt",
+    "username": "PILOT_640",
+    "salt": "8af0894f05e819edd652c06554ffd9c0",
+    "passwordHash": "1186251c78773eb2baa85e2d207525f6d924a8fc6d0c67a781b5e8ec09039895e31fc4fc89daed6ef3aa0c8594a0b8d24bad2eb5ec26f9b7dd2c902b9a171eca",
+    "createdAt": "2026-10-02T18:47:06.923Z",
+    "stats": {
+      "matchesPlayed": 0,
+      "matchesWon": 0,
+      "bestProximityMm": null,
+      "elo": 1200,
+      "pucksFired": 0
+    }
+  }
+]

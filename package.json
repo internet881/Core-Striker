@@ -1,0 +1,29 @@
+{
+  "name": "spinning-wheel-game",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node server.js",
+    "build": "node tools/build.js",
+    "share": "node tools/share_tunnel.js",
+    "tunnel": "node tools/share_tunnel.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "Core Striker - Authoritative Multiplayer Slingshot Arcade Game",
+  "dependencies": {
+    "cloudflared": "^0.7.3",
+    "ws": "^8.22.0"
+  },
+  "devDependencies": {
+    "archiver": "^8.0.0",
+    "html-minifier-terser": "^7.2.0",
+    "javascript-obfuscator": "^5.8.0",
+    "terser": "^5.51.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

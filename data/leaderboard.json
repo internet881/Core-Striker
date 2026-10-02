@@ -1,0 +1,33 @@
+{
+  "snipers": [
+    {
+      "id": "snp_inaugural_1",
+      "username": "ORANGE_MFG",
+      "proximityMm": 0.42,
+      "date": "2026-09-28T12:00:00.000Z",
+      "mode": "2v2"
+    },
+    {
+      "id": "snp_1790966824663_ejr5",
+      "username": "TEST_VAL_6713",
+      "proximityMm": 0.725,
+      "date": "2026-10-02T18:47:04.663Z",
+      "mode": "2v2"
+    },
+    {
+      "id": "snp_inaugural_2",
+      "username": "VORTEX_PRIME",
+      "proximityMm": 1.15,
+      "date": "2026-09-29T16:30:00.000Z",
+      "mode": "2v2"
+    },
+    {
+      "id": "snp_inaugural_3",
+      "username": "APEX_SHADOW",
+      "proximityMm": 2.875,
+      "date": "2026-09-30T20:15:00.000Z",
+      "mode": "5v5"
+    }
+  ],
+  "pilots": []
+}
