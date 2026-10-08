@@ -248,7 +248,8 @@ class PhysicsEngine {
           puck.vy = 0;
 
           // Check if settled outside the scoring arena ring
-          if (dist > WORLD.R_ARENA) {
+          const arenaRadius = this.rArena || WORLD.R_ARENA;
+          if (dist > arenaRadius) {
             if (puck.lastBumperId != null && puck.lastBumperId !== puck.playerId) {
               const bumper = playerMap.get(puck.lastBumperId);
               if (bumper) bumper.knockouts = (bumper.knockouts || 0) + 1;

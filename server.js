@@ -376,6 +376,13 @@ const server = http.createServer((req, res) => {
 
   let reqUrl = req.url.split('?')[0]; // Strip query params
 
+  // Favicon handler
+  if (reqUrl === '/favicon.ico') {
+    res.writeHead(204);
+    res.end();
+    return;
+  }
+
   // 0. Render & Cloud Health Check: GET /healthz or GET /api/health
   if (req.method === 'GET' && (reqUrl === '/healthz' || reqUrl === '/api/health')) {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -797,7 +804,37 @@ wss.on('connection', (ws) => {
         case 'START_MATCH':
         case 'RESTART_MATCH': {
           if (currentRoom) {
+            if (currentPlayer && !currentPlayer.isHost) {
+              console.warn(`[START_MATCH REJECTED] Non-host player #${currentPlayer.id} (${currentPlayer.name}) attempted to start match in room ${currentRoom.roomCode}`);
+              break;
+            }
             currentRoom.startRound(currentPlayer);
+          }
+          break;
+        }
+
+        case 'START_NEXT_ROUND': {
+          if (currentRoom) {
+            currentRoom.startNextRound(currentPlayer);
+          }
+          break;
+        }
+
+        case 'REPLAY_ROUND': {
+          if (currentRoom) {
+            currentRoom.replayRound(currentPlayer);
+          }
+          break;
+        }
+
+        case 'HOST_VOLLEY_ADVANCE': {
+          if (currentRoom && currentPlayer && currentPlayer.isHost) {
+            currentRoom.currentVolleyPhase = Math.max(currentRoom.currentVolleyPhase, Number(msg.volleyPhase) || 1);
+            currentRoom.broadcast({
+              type: 'VOLLEY_PHASE_CHANGED',
+              volleyPhase: currentRoom.currentVolleyPhase,
+              totalVolleys: currentRoom.pucksPerPlayer
+            }, ws);
           }
           break;
         }

@@ -21,13 +21,15 @@ class Room {
     this.name = config.roomName || roomCode;
     this.config = config;
     this.isPersistent24h = config.isPersistent24h || false;
+    this.fillBots = (config.fillBots !== undefined) ? !!config.fillBots : true;
+    const isSim = (config.pace === "simultaneous" || config.gameMode === "simultaneous" || config.pacingMode === "simultaneous");
     this.maxPlayers = (config.maxPlayers !== undefined)
       ? parseInt(config.maxPlayers, 10)
-      : (this.isPersistent24h ? 1000 : 4);
+      : (this.isPersistent24h ? 1000 : (isSim ? 10 : 4));
     this.pucksPerPlayer = config.pucksPerPlayer || 3;
-    this.gameMode = config.gameMode || "turnBased"; // "turnBased" (default) or "simultaneous"
+    this.gameMode = isSim ? "simultaneous" : "turnBased"; // Authoritative pacing format
     this.teamFormat = config.teamFormat || "team"; // "team" (2v2 Crimson vs Cobalt or 5v5 Squad War)
-    this.scoringRule = config.scoringRule || "closest_single";
+    this.scoringRule = config.scoringRule || (config.gameMode === "closest" || config.gameMode === "turnBased" || config.gameMode === "simultaneous" ? "closest_single" : (config.gameMode || "closest_single"));
     this.stagedVolleys = true; // Synchronized volleys only (rapid fire disabled)
     this.currentVolleyPhase = 1;
     this.volleySettleWait = 0;
@@ -140,7 +142,11 @@ class Room {
     this.config = Object.assign({}, this.config, newConfig);
 
     if (newConfig.roomName) this.name = newConfig.roomName;
-    if (newConfig.gameMode) this.gameMode = newConfig.gameMode;
+    if (newConfig.pace !== undefined || newConfig.gameMode !== undefined || newConfig.pacingMode !== undefined) {
+      const paceVal = newConfig.pace || newConfig.pacingMode || newConfig.gameMode;
+      const isSim = (paceVal === "simultaneous" || newConfig.gameMode === "simultaneous");
+      this.gameMode = isSim ? "simultaneous" : "turnBased";
+    }
     if (newConfig.maxPlayers) {
       const parsedMax = parseInt(newConfig.maxPlayers, 10);
       this.maxPlayers = Math.min(Math.max(2, isFinite(parsedMax) ? parsedMax : 4), 1000);
@@ -172,34 +178,41 @@ class Room {
     }
     if (newConfig.pegBounce) this.physics.pegBounce = Number(newConfig.pegBounce);
     if (newConfig.bumperBounce) this.physics.bumperBounce = Number(newConfig.bumperBounce);
+    if (newConfig.fillBots !== undefined) this.fillBots = !!newConfig.fillBots;
 
     this.ensureBotSlots();
 
-    // Broadcast updated ROOM_STATE to all connected clients!
-    this.broadcast({
-      type: "ROOM_STATE",
-      roomCode: this.roomCode,
-      roomName: this.name,
-      config: {
-        maxPlayers: this.maxPlayers,
-        pucksPerPlayer: this.pucksPerPlayer,
-        gameMode: this.gameMode,
-        teamFormat: this.teamFormat,
-        scoringRule: this.scoringRule,
-        stagedVolleys: this.stagedVolleys,
-        mapLayout: this.mapLayout,
-        mapSize: this.mapSize || "medium",
-        iceFriction: this.physics.iceFriction,
-        pegBounce: this.physics.pegBounce,
-        bumperBounce: this.physics.bumperBounce,
-        isPersistent24h: this.isPersistent24h,
-        isBarrage: this.isBarrage
-      },
-      map: this.physics.map,
-      players: this.getPublicPlayerList(),
-      settledPucks: this.pucks.filter(p => p.settled && !p.isKnockedOut && !p.isRetired),
-      epochTimeRemainingMs: Math.max(0, this.epochDurationMs - (Date.now() - this.epochStartTime))
-    });
+    // Send updated config/state individually to each connected client preserving their credentials
+    for (const [ws, player] of this.players.entries()) {
+      this.sendTo(ws, {
+        type: "ROOM_STATE",
+        roomCode: this.roomCode,
+        roomName: this.name,
+        playerId: player.id,
+        slotIndex: player.slotIndex,
+        isHost: !!player.isHost,
+        config: {
+          maxPlayers: this.maxPlayers,
+          pucksPerPlayer: this.pucksPerPlayer,
+          gameMode: this.gameMode,
+          teamFormat: this.teamFormat,
+          scoringRule: this.scoringRule,
+          stagedVolleys: this.stagedVolleys,
+          fillBots: this.fillBots,
+          mapLayout: this.mapLayout,
+          mapSize: this.mapSize || "medium",
+          iceFriction: this.physics.iceFriction,
+          pegBounce: this.physics.pegBounce,
+          bumperBounce: this.physics.bumperBounce,
+          isPersistent24h: this.isPersistent24h,
+          isBarrage: this.isBarrage
+        },
+        map: this.physics.map,
+        players: this.getPublicPlayerList(),
+        settledPucks: this.pucks.filter(p => p.settled && !p.isKnockedOut && !p.isRetired),
+        epochTimeRemainingMs: Math.max(0, this.epochDurationMs - (Date.now() - this.epochStartTime))
+      });
+    }
 
     console.log(`[ROOM CONFIG UPDATED] Room ${this.roomCode}: mode=${this.gameMode}, players=${this.maxPlayers}, map=${this.mapLayout}`);
   }
@@ -227,7 +240,14 @@ class Room {
     }
 
     const name = clientInfo.name || `Striker-${playerId}`;
-    const isHost = clientInfo.isHost || (this.players.size === 0);
+    let hasExistingHost = false;
+    for (const p of this.players.values()) {
+      if (p.isHost) {
+        hasExistingHost = true;
+        break;
+      }
+    }
+    const isHost = !hasExistingHost && (clientInfo.isHost || this.players.size === 0);
 
     const player = {
       id: playerId,
@@ -283,11 +303,29 @@ class Room {
   removePlayer(ws) {
     const player = this.players.get(ws);
     if (player) {
+      const wasHost = !!player.isHost;
       this.players.delete(ws);
+
+      let newHostPlayer = null;
+      if (wasHost && this.players.size > 0) {
+        newHostPlayer = this.players.values().next().value;
+        if (newHostPlayer) {
+          newHostPlayer.isHost = true;
+          this.sendTo(newHostPlayer.ws, {
+            type: "HOST_PROMOTED",
+            isHost: true,
+            playerId: newHostPlayer.id
+          });
+          console.log(`[HOST MIGRATED] Room ${this.roomCode}: player ${newHostPlayer.name} (#${newHostPlayer.id}) promoted to host`);
+        }
+      }
+
       this.broadcast({
         type: "PLAYER_LEFT",
         playerId: player.id,
         name: player.name,
+        wasHost,
+        newHostId: newHostPlayer ? newHostPlayer.id : null,
         players: this.getPublicPlayerList()
       });
 
@@ -324,6 +362,10 @@ class Room {
       if (occupiedSlots.has(slot) || slot >= max) {
         this.botPlayers.delete(slot);
       }
+    }
+    if (this.fillBots === false) {
+      this.botPlayers.clear();
+      return;
     }
     // Fill remaining slots up to max with bots
     for (let slot = 0; slot < max; slot++) {
@@ -377,7 +419,16 @@ class Room {
     if (!player) return [];
     return this.pucks.filter(p => {
       if (p.isKnockedOut || p.isRetired || p.isFouled) return false;
-      if (p.team === player.team) return false;
+      // Never consider shooter's own pucks as opponents
+      if (p.playerId !== undefined && p.playerId === player.id) return false;
+      // Determine puck's team directly or via owner lookup
+      let puckTeam = p.team;
+      if (!puckTeam || typeof puckTeam !== "string") {
+        const owner = this.findCombatant(p.playerId, p.slotIndex);
+        if (owner) puckTeam = owner.team;
+      }
+      // In 2v2 / team mode, teammates share the same team (crimson vs cobalt); exclude teammate pucks
+      if (puckTeam && player.team && puckTeam === player.team) return false;
       const dist = Math.hypot(p.x, p.y);
       return dist <= (WORLD.R_ARENA + 25) || p.hasEnteredArena;
     });
@@ -495,6 +546,91 @@ class Room {
       starterId: this.currentTurnPlayerId,
       starterSlotIndex: firstPlayer ? firstPlayer.slotIndex : 0,
       config: this.config || {},
+      volleyPhase: 1,
+      totalVolleys: this.pucksPerPlayer,
+      players: this.getPublicPlayerList()
+    });
+
+    if (firstPlayer) {
+      this.broadcast({
+        type: "TURN_CHANGED",
+        activePlayerId: firstPlayer.id,
+        activeSlotIndex: firstPlayer.slotIndex,
+        turnNumber: 1,
+        playerName: firstPlayer.name
+      });
+    }
+  }
+
+  startNextRound(starter = null) {
+    this.matchStatus = "in_round";
+    this.roundNumber++;
+    this.turnNumber = 1;
+    this.currentVolleyPhase = 1;
+    this.volleySettleWait = 0;
+    this.shotInFlight = false;
+    this.pucks = [];
+
+    const combatants = this.getAllCombatants();
+    for (const c of combatants) {
+      c.pucksLeft = this.pucksPerPlayer;
+      c.shotsTaken = 0;
+      c.knockouts = 0;
+    }
+
+    const firstPlayer = starter || combatants[0];
+    this.currentTurnPlayerId = firstPlayer ? firstPlayer.id : null;
+    this.starterPlayerId = this.currentTurnPlayerId;
+
+    console.log(`[SERVER ROUND ADVANCE] Room ${this.roomCode} -> Round ${this.roundNumber} starting. Pucks cleared.`);
+
+    this.broadcast({
+      type: "ROUND_STARTED",
+      roundNumber: this.roundNumber,
+      starterId: this.currentTurnPlayerId,
+      starterSlotIndex: firstPlayer ? firstPlayer.slotIndex : 0,
+      volleyPhase: 1,
+      totalVolleys: this.pucksPerPlayer,
+      players: this.getPublicPlayerList()
+    });
+
+    if (firstPlayer) {
+      this.broadcast({
+        type: "TURN_CHANGED",
+        activePlayerId: firstPlayer.id,
+        activeSlotIndex: firstPlayer.slotIndex,
+        turnNumber: 1,
+        playerName: firstPlayer.name
+      });
+    }
+  }
+
+  replayRound(starter = null) {
+    this.matchStatus = "in_round";
+    this.turnNumber = 1;
+    this.currentVolleyPhase = 1;
+    this.volleySettleWait = 0;
+    this.shotInFlight = false;
+    this.pucks = [];
+
+    const combatants = this.getAllCombatants();
+    for (const c of combatants) {
+      c.pucksLeft = this.pucksPerPlayer;
+      c.shotsTaken = 0;
+      c.knockouts = 0;
+    }
+
+    const firstPlayer = starter || combatants[0];
+    this.currentTurnPlayerId = firstPlayer ? firstPlayer.id : null;
+    this.starterPlayerId = this.currentTurnPlayerId;
+
+    console.log(`[SERVER ROUND REPLAY] Room ${this.roomCode} -> Replaying Round ${this.roundNumber}. Pucks cleared.`);
+
+    this.broadcast({
+      type: "ROUND_STARTED",
+      roundNumber: this.roundNumber,
+      starterId: this.currentTurnPlayerId,
+      starterSlotIndex: firstPlayer ? firstPlayer.slotIndex : 0,
       volleyPhase: 1,
       totalVolleys: this.pucksPerPlayer,
       players: this.getPublicPlayerList()
@@ -837,8 +973,19 @@ class Room {
     if (this.gameMode === "simultaneous") {
       const shotsTaken = player.shotsTaken || 0;
       if (shotsTaken >= this.currentVolleyPhase) {
-        console.warn(`[SERVER REJECT SHOT] Player ${player.name} (P${player.id}) already fired for volley wave ${this.currentVolleyPhase}/${this.pucksPerPlayer}`);
-        return false;
+        const combatants = this.getAllCombatants();
+        const minShots = Math.min(...combatants.map(c => c.shotsTaken || 0));
+        if (minShots >= this.currentVolleyPhase && this.currentVolleyPhase < this.pucksPerPlayer) {
+          this.currentVolleyPhase = minShots + 1;
+          this.broadcast({
+            type: "VOLLEY_PHASE_CHANGED",
+            volleyPhase: this.currentVolleyPhase,
+            totalVolleys: this.pucksPerPlayer
+          });
+        } else {
+          console.warn(`[SERVER REJECT SHOT] Player ${player.name} (P${player.id}) already fired for volley wave ${this.currentVolleyPhase}/${this.pucksPerPlayer}`);
+          return false;
+        }
       }
     }
 
@@ -853,7 +1000,7 @@ class Room {
 
     // Strictly compute station spawn coordinates server-side to prevent position cheating
     const totalSlots = Math.max(2, this.maxPlayers || 2);
-    const slotAngle = (player.slotIndex / totalSlots) * Math.PI * 2 - Math.PI / 2;
+    const slotAngle = (player.slotIndex / totalSlots) * Math.PI * 2 + Math.PI / 2;
     const launchDist = (this.physics && this.physics.rOrbit) ? this.physics.rOrbit : WORLD.R_ORBIT;
     const angle = Number(shotData.angle !== undefined ? shotData.angle : slotAngle);
     const x = Math.cos(slotAngle) * launchDist;
@@ -1035,8 +1182,6 @@ class RoomManager {
     if (!room) {
       room = new Room(roomCode, config);
       this.rooms.set(roomCode, room);
-    } else if (config && Object.keys(config).length > 0) {
-      room.updateConfig(config);
     }
     return room;
   }
